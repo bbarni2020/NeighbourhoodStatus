@@ -29,9 +29,18 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))
 
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
+SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
+
+if not SLACK_BOT_TOKEN:
+    raise ValueError("SLACK_BOT_TOKEN environment variable is required")
+if not SLACK_SIGNING_SECRET:
+    raise ValueError("SLACK_SIGNING_SECRET environment variable is required")
+
 slack_app = App(
-    token=os.environ.get("SLACK_BOT_TOKEN"),
-    signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
+    token=SLACK_BOT_TOKEN,
+    signing_secret=SLACK_SIGNING_SECRET,
+    process_before_response=True
 )
 
 handler = SlackRequestHandler(slack_app)
@@ -613,44 +622,45 @@ def index():
         return redirect(url_for('dashboard'))
     return render_template('login.html')
 
-@app.route('/login')
-def login():
-    client_id = os.environ.get("SLACK_CLIENT_ID")
-    
-    redirect_uri = request.url_root.replace('http://', 'https://') + 'auth/callback'
-    redirect_uri = redirect_uri.rstrip('/')
-    if not redirect_uri.endswith('/auth/callback'):
-        redirect_uri += '/auth/callback'
-    
-    scope = 'openid,profile'
-    
-    slack_auth_url = f"https://slack.com/oauth/v2/authorize?client_id={client_id}&scope={scope}&redirect_uri={redirect_uri}"
-    return redirect(slack_auth_url)
+# OAuth routes commented out - using manual login only
+# @app.route('/login')
+# def login():
+#     client_id = os.environ.get("SLACK_CLIENT_ID")
+#     
+#     redirect_uri = request.url_root.replace('http://', 'https://') + 'auth/callback'
+#     redirect_uri = redirect_uri.rstrip('/')
+#     if not redirect_uri.endswith('/auth/callback'):
+#         redirect_uri += '/auth/callback'
+#     
+#     scope = 'openid,profile'
+#     
+#     slack_auth_url = f"https://slack.com/oauth/v2/authorize?client_id={client_id}&scope={scope}&redirect_uri={redirect_uri}"
+#     return redirect(slack_auth_url)
 
-@app.route('/auth/callback')
-def auth_callback():
-    code = request.args.get('code')
-    if not code:
-        return redirect(url_for('index'))
-    
-    client_id = os.environ.get("SLACK_CLIENT_ID")
-    client_secret = os.environ.get("SLACK_CLIENT_SECRET")
-    redirect_uri = request.url_root + 'auth/callback'
-    
-    response = requests.post('https://slack.com/api/oauth.v2.access', data={
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'code': code,
-        'redirect_uri': redirect_uri
-    })
-    
-    data = response.json()
-    if data.get('ok'):
-        user_info = data['authed_user']
-        session['user_id'] = user_info['id']
-        session['access_token'] = user_info['access_token']
-    
-    return redirect(url_for('dashboard'))
+# @app.route('/auth/callback')
+# def auth_callback():
+#     code = request.args.get('code')
+#     if not code:
+#         return redirect(url_for('index'))
+#     
+#     client_id = os.environ.get("SLACK_CLIENT_ID")
+#     client_secret = os.environ.get("SLACK_CLIENT_SECRET")
+#     redirect_uri = request.url_root + 'auth/callback'
+#     
+#     response = requests.post('https://slack.com/api/oauth.v2.access', data={
+#         'client_id': client_id,
+#         'client_secret': client_secret,
+#         'code': code,
+#         'redirect_uri': redirect_uri
+#     })
+#     
+#     data = response.json()
+#     if data.get('ok'):
+#         user_info = data['authed_user']
+#         session['user_id'] = user_info['id']
+#         session['access_token'] = user_info['access_token']
+#     
+#     return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
 def dashboard():
@@ -658,18 +668,19 @@ def dashboard():
         return redirect(url_for('index'))
     
     user_id = session['user_id']
-    access_token = session.get('access_token')
+    # OAuth user info fetching commented out - using manual login only
+    # access_token = session.get('access_token')
     is_manual_login = session.get('manual_login', False)
     
-    if access_token and not is_manual_login and ('user_name' not in session or 'user_image' not in session):
-        user_details = requests.get('https://slack.com/api/users.identity', 
-                                  headers={'Authorization': f"Bearer {access_token}"})
-        user_data = user_details.json()
-        
-        if user_data.get('ok'):
-            session['user_name'] = user_data['user']['name']
-            session['user_email'] = user_data['user'].get('email', '')
-            session['user_image'] = user_data['user']['image_192']
+    # if access_token and not is_manual_login and ('user_name' not in session or 'user_image' not in session):
+    #     user_details = requests.get('https://slack.com/api/users.identity', 
+    #                               headers={'Authorization': f"Bearer {access_token}"})
+    #     user_data = user_details.json()
+    #     
+    #     if user_data.get('ok'):
+    #         session['user_name'] = user_data['user']['name']
+    #         session['user_email'] = user_data['user'].get('email', '')
+    #         session['user_image'] = user_data['user']['image_192']
     
     current_status = get_user_submission_status(user_id)
     is_tracked = user_id in tracked_users
