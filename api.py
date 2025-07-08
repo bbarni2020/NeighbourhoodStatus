@@ -112,7 +112,7 @@ def get_status(slack_real_id):
 
 def get_status_emoji_and_description(status):
     if status.startswith("1–"):
-        return "🟡", "Pending Submission", "Your submission is waiting to be reviewed"
+        return "🕛", "Pending Submission", "Your submission is waiting to be reviewed"
     elif status.startswith("2–"):
         return "🟢", "Approved", "Your submission has been successfully submitted"
     elif status.startswith("0–"):
@@ -203,12 +203,14 @@ def check_status_changes():
                 slack_app.client.chat_postMessage(
                     channel=user_id,
                     text=f"{ai_message}\n\n"
-                        f"🔄 **Status Update Alert**\n\n"
+                        f"🔄 *Status Update Alert*\n\n"
                         f"Your YSWS submission status has changed!\n"
-                        f"**Current Status:** {emoji} *{status_name}*\n\n"
-                        f"💬 **Description:** {description}"
+                        f"*Current Status:* {emoji} {status_name}\n\n"
+                        f"💬 *Description:* {description}\n\n"
+                        f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
                 tracked_users[user_id]['last_status'] = current_status
+                tracked_users[user_id]['last_updated'] = datetime.now().isoformat()
                 save_tracked_users()
                 print(f"Status updated for user {user_id}: {user_data['last_status']} -> {current_status}")
             except Exception as e:
@@ -229,15 +231,31 @@ def handle_track_status(message, say):
         emoji, status_name, description = get_status_emoji_and_description(current_status)
         tracked_users[user_id] = {
             'channel': channel,
-            'last_status': current_status
+            'last_status': current_status,
+            'last_updated': datetime.now().isoformat()
         }
         save_tracked_users()
-        say(f"✅ **YSWS Submission Tracking Activated**\n\n"
-            f"📊 **Current Status:** {emoji} *{status_name}*\n"
+        try:
+            slack_app.client.chat_postMessage(
+                channel=user_id,
+                text=f"✅ *YSWS Submission Tracking Started*\n\n"
+                     f"📊 *Current Status:* {emoji} {status_name}\n"
+                     f"💬 *Description:* {description}\n\n"
+                     f"⏰ *Check Interval:* Every 5 minutes\n"
+                     f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
+                     f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                     f"I'll monitor your submission and notify you immediately when your status changes!"
+            )
+        except Exception as e:
+            print(f"Error sending DM to {user_id}: {e}")
+        
+        say(f"✅ *YSWS Submission Tracking Activated*\n\n"
+            f"📊 *Current Status:* {emoji} {status_name}\n"
             f"💬 {description}\n\n"
-            f"⏰ **Check Interval:** Every 5 minutes\n"
-            f"🔔 **Notifications:** Direct messages when status changes\n"
-            f"🛑 **To stop tracking:** Use `/untrack` command\n\n"
+            f"⏰ *Check Interval:* Every 5 minutes\n"
+            f"🔔 *Notifications:* Direct messages when status changes\n"
+            f"🛑 *To stop tracking:* Use `/untrack` command\n\n"
             f"I'll monitor your submission and notify you immediately when your status changes!")
         print(f"Started tracking user {user_id} with status: {current_status}")
     else:
@@ -255,15 +273,29 @@ def handle_track_command(ack, respond, command):
         emoji, status_name, description = get_status_emoji_and_description(current_status)
         tracked_users[user_id] = {
             'channel': channel,
-            'last_status': current_status
+            'last_status': current_status,
+            'last_updated': datetime.now().isoformat()
         }
         save_tracked_users()
+        try:
+            slack_app.client.chat_postMessage(
+                channel=user_id,
+                text=f"✅ *YSWS Submission Tracking Started*\n\n"
+                     f"📊 *Current Status:* {emoji} {status_name}\n"
+                     f"💬 *Description:* {description}\n\n"
+                     f"⏰ *Check Interval:* Every 5 minutes\n"
+                     f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
+                     f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                     f"I'll monitor your submission and notify you immediately when your status changes!"
+            )
+        except Exception as e:
+            print(f"Error sending DM to {user_id}: {e}")
+        
         respond(f"✅ *YSWS Submission Tracking Activated*\n\n"
                f"📊 *Current Status:* {emoji} {status_name}\n"
                f"📋 *Status Type:* {status_name}\n"
                f"💬 *Description:* {description}\n\n"
-               f"👤 *User ID:* {user_id}\n"
-               f"📱 *Channel:* <#{channel}>\n"
                f"⏰ *Check Interval:* Every 5 minutes\n"
                f"🔔 *Notifications:* Direct messages when status changes\n"
                f"🛑 *To stop tracking:* Use `/untrack` command\n\n"
@@ -281,10 +313,10 @@ def handle_status_command(ack, respond, command):
     
     if current_status:
         emoji, status_name, description = get_status_emoji_and_description(current_status)
-        respond(f"📊 **Your Current YSWS Submission Status**\n\n"
-               f"{emoji} **Status:** *{current_status}*\n"
-               f"📋 **Type:** {status_name}\n"
-               f"💬 **Description:** {description}")
+        respond(f"📊 *Your Current YSWS Submission Status*\n\n"
+               f"{emoji} *Status:* {current_status}\n"
+               f"📋 *Type:* {status_name}\n"
+               f"💬 *Description:* {description}")
     else:
         respond("❌ Could not find your submission. Make sure you have submitted to YSWS.")
 
@@ -312,7 +344,7 @@ def handle_list_command(ack, respond, command):
             emoji, status_name, _ = get_status_emoji_and_description(data['last_status'])
             user_list.append(f"• <@{uid}>: {emoji} {data['last_status']}")
         
-        respond(f"📋 **Currently tracking {user_count} user(s):**\n\n" + "\n".join(user_list))
+        respond(f"📋 *Currently tracking {user_count} user(s):*\n\n" + "\n".join(user_list))
     else:
         respond("📋 No users are currently being tracked.")
 
