@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 from flask_cors import CORS
 import requests
 import time
@@ -10,6 +10,7 @@ import os
 import json
 import atexit
 from datetime import datetime, timedelta
+import secrets
 
 def load_env_file():
     try:
@@ -26,6 +27,7 @@ load_env_file()
 
 app = Flask(__name__)
 CORS(app)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(16))
 
 slack_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
@@ -199,6 +201,8 @@ def check_status_changes():
                 emoji, status_name, description = get_status_emoji_and_description(current_status)
                 old_emoji, old_status_name, _ = get_status_emoji_and_description(user_data['last_status'])
                 ai_message = get_ai_message(status_name, user_data['last_status'])
+
+                delete_bot_messages_in_dm(slack_app.client, user_id)
                 
                 slack_app.client.chat_postMessage(
                     channel=user_id,
@@ -207,7 +211,7 @@ def check_status_changes():
                         f"Your YSWS submission status has changed!\n"
                         f"*Current Status:* {emoji} {status_name}\n\n"
                         f"💬 *Description:* {description}\n\n"
-                        f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC"
                 )
                 tracked_users[user_id]['last_status'] = current_status
                 tracked_users[user_id]['last_updated'] = datetime.now().isoformat()
@@ -236,6 +240,8 @@ def handle_track_status(message, say):
         }
         save_tracked_users()
         try:
+            delete_bot_messages_in_dm(slack_app.client, user_id)
+            
             slack_app.client.chat_postMessage(
                 channel=user_id,
                 text=f"✅ *YSWS Submission Tracking Started*\n\n"
@@ -244,7 +250,7 @@ def handle_track_status(message, say):
                      f"⏰ *Check Interval:* Every 5 minutes\n"
                      f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
                      f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
-                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC\n\n"
                      f"I'll monitor your submission and notify you immediately when your status changes!"
             )
         except Exception as e:
@@ -278,6 +284,8 @@ def handle_track_command(ack, respond, command):
         }
         save_tracked_users()
         try:
+            delete_bot_messages_in_dm(slack_app.client, user_id)
+            
             slack_app.client.chat_postMessage(
                 channel=user_id,
                 text=f"✅ *YSWS Submission Tracking Started*\n\n"
@@ -286,7 +294,7 @@ def handle_track_command(ack, respond, command):
                      f"⏰ *Check Interval:* Every 5 minutes\n"
                      f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
                      f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
-                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC\n\n"
                      f"I'll monitor your submission and notify you immediately when your status changes!"
             )
         except Exception as e:
@@ -351,6 +359,383 @@ def handle_list_command(ack, respond, command):
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
     return handler.handle(request)
+
+@slack_app.event("app_home_opened")
+def update_home_tab(client, event, logger):
+    try:
+        user_id = event["user"]
+
+        is_tracked = user_id in tracked_users
+        current_status = get_user_submission_status(user_id)
+
+        status_text = ""
+        if is_tracked and current_status:
+            emoji, status_name, description = get_status_emoji_and_description(current_status)
+            last_updated = tracked_users[user_id].get('last_updated', 'Unknown')
+            if last_updated != 'Unknown':
+                formatted_time = last_updated[:19].replace('T', ' ') + ' UTC'
+            else:
+                formatted_time = 'Unknown'
+            status_text = f"\n\n📊 *Current Status:* {emoji} {status_name}\n💬 {description}\n🕐 *Last Updated:* {formatted_time}"
+        
+        client.views_publish(
+            user_id=user_id,
+            view={
+                "type": "home",
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Welcome to YSWS Status Tracker!* 🏠\n\nTrack your submission status and get notified of changes automatically.{status_text}"
+                        }
+                    },
+                    {
+                        "type": "divider"
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Quick Actions:*"
+                        }
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "🔔 Start Tracking" if not is_tracked else "🔄 Refresh Status"
+                                },
+                                "action_id": "start_tracking",
+                                "style": "primary"
+                            },
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "📊 Check Status"
+                                },
+                                "action_id": "check_status"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "🔕 Stop Tracking"
+                                },
+                                "action_id": "stop_tracking",
+                                "style": "danger"
+                            },
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "❓ Help"
+                                },
+                                "action_id": "show_help"
+                            }
+                        ]
+                    },
+                    {
+                        "type": "divider"
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "💡 *Tip: You can also use slash commands like `/yswsdb-track` in any channel*"
+                            }
+                        ]
+                    }
+                ]
+            }
+        )
+    except Exception as e:
+        print(f"Error publishing home tab: {e}")
+
+@slack_app.action("start_tracking")
+def handle_start_tracking_button(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    
+    current_status = get_user_submission_status(user_id)
+    
+    if current_status:
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
+        tracked_users[user_id] = {
+            'channel': user_id,
+            'last_status': current_status,
+            'last_updated': datetime.now().isoformat()
+        }
+        save_tracked_users()
+
+        delete_bot_messages_in_dm(client, user_id)
+
+        client.chat_postMessage(
+            channel=user_id,
+            text=f"✅ *YSWS Submission Tracking Started*\n\n"
+                 f"📊 *Current Status:* {emoji} {status_name}\n"
+                 f"💬 *Description:* {description}\n\n"
+                 f"⏰ *Check Interval:* Every 5 minutes\n"
+                 f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
+                 f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
+                 f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
+                 f"I'll monitor your submission and notify you immediately when your status changes!"
+        )
+
+        update_home_tab(client, {"user": user_id}, print)
+        
+    else:
+        delete_bot_messages_in_dm(client, user_id)
+        
+        client.chat_postMessage(
+            channel=user_id,
+            text="❌ Could not find your submission. Make sure you have submitted to YSWS."
+        )
+
+@slack_app.action("check_status")
+def handle_check_status_button(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    current_status = get_user_submission_status(user_id)
+    
+    if current_status:
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
+        
+        delete_bot_messages_in_dm(client, user_id)
+        
+        client.chat_postMessage(
+            channel=user_id,
+            text=f"📊 *Your Current YSWS Submission Status*\n\n"
+                 f"{emoji} *Status:* {status_name}\n"
+                 f"💬 *Description:* {description}\n\n"
+                 f"*Checked:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        )
+    else:
+        delete_bot_messages_in_dm(client, user_id)
+        
+        client.chat_postMessage(
+            channel=user_id,
+            text="❌ Could not find your submission. Make sure you have submitted to YSWS."
+        )
+
+@slack_app.action("stop_tracking")
+def handle_stop_tracking_button(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    
+    if user_id in tracked_users:
+        del tracked_users[user_id]
+        save_tracked_users()
+        
+        delete_bot_messages_in_dm(client, user_id)
+        
+        client.chat_postMessage(
+            channel=user_id,
+            text="🔕 *Tracking stopped!* You won't receive status update notifications anymore."
+        )
+
+        update_home_tab(client, {"user": user_id}, print)
+        
+    else:
+        delete_bot_messages_in_dm(client, user_id)
+        
+        client.chat_postMessage(
+            channel=user_id,
+            text="❌ You're not currently being tracked."
+        )
+
+@slack_app.action("show_help")
+def handle_help_button(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+    
+    delete_bot_messages_in_dm(client, user_id)
+    
+    client.chat_postMessage(
+        channel=user_id,
+        text="*YSWS Status Tracker Help* 📚\n\n"
+             "*Available Commands:*\n"
+             "• `/yswsdb-track` - Start tracking\n"
+             "• `/yswsdb-status` - Check current status\n"
+             "• `/yswsdb-untrack` - Stop tracking\n\n"
+             "*Features:*\n"
+             "• Automatic status checking every 5 minutes\n"
+             "• Direct message notifications on changes\n"
+             "• AI-powered friendly status updates\n"
+             "• Interactive buttons in bot profile\n\n"
+             "*Status Types:*\n"
+             "• 🕛 Pending - Waiting for review\n"
+             "• 🟢 Approved - Successfully submitted\n"
+             "• 🔴 Denied - Issues or not started\n\n"
+             "*Need help?* Contact your YSWS administrator."
+    )
+
+def delete_bot_messages_in_dm(client, user_id):
+    """Delete previous bot messages in a DM channel with a user"""
+    try:
+        bot_info = client.auth_test()
+        bot_user_id = bot_info["user_id"]
+        
+        response = client.conversations_history(
+            channel=user_id,
+            limit=100
+        )
+        
+        if response["ok"]:
+            messages = response["messages"]
+            
+            for message in messages:
+                if message.get("user") == bot_user_id:
+                    try:
+                        client.chat_delete(
+                            channel=user_id,
+                            ts=message["ts"]
+                        )
+                    except Exception as e:
+                        print(f"Could not delete message {message['ts']}: {e}")
+                        
+    except Exception as e:
+        print(f"Error deleting bot messages for user {user_id}: {e}")
+
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
+@app.route('/login')
+def login():
+    client_id = os.environ.get("SLACK_CLIENT_ID")
+    
+    redirect_uri = request.url_root.replace('http://', 'https://') + 'auth/callback'
+    redirect_uri = redirect_uri.rstrip('/')
+    if not redirect_uri.endswith('/auth/callback'):
+        redirect_uri += '/auth/callback'
+    
+    scope = 'identity.basic,identity.email'
+    
+    slack_auth_url = f"https://slack.com/oauth/v2/authorize?client_id={client_id}&scope={scope}&redirect_uri={redirect_uri}"
+    return redirect(slack_auth_url)
+
+@app.route('/auth/callback')
+def auth_callback():
+    code = request.args.get('code')
+    if not code:
+        return redirect(url_for('index'))
+    
+    client_id = os.environ.get("SLACK_CLIENT_ID")
+    client_secret = os.environ.get("SLACK_CLIENT_SECRET")
+    redirect_uri = request.url_root + 'auth/callback'
+    
+    response = requests.post('https://slack.com/api/oauth.v2.access', data={
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'code': code,
+        'redirect_uri': redirect_uri
+    })
+    
+    data = response.json()
+    if data.get('ok'):
+        user_info = data['authed_user']
+        session['user_id'] = user_info['id']
+        session['access_token'] = user_info['access_token']
+        
+        user_details = requests.get('https://slack.com/api/users.identity', 
+                                  headers={'Authorization': f"Bearer {user_info['access_token']}"})
+        user_data = user_details.json()
+        
+        if user_data.get('ok'):
+            session['user_name'] = user_data['user']['name']
+            session['user_email'] = user_data['user'].get('email', '')
+            session['user_image'] = user_data['user']['image_192']
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        return redirect(url_for('index'))
+    
+    user_id = session['user_id']
+    current_status = get_user_submission_status(user_id)
+    is_tracked = user_id in tracked_users
+    
+    status_info = None
+    if current_status:
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
+        status_info = {
+            'emoji': emoji,
+            'name': status_name,
+            'description': description,
+            'raw_status': current_status
+        }
+    
+    tracking_info = None
+    if is_tracked:
+        tracking_data = tracked_users[user_id]
+        last_updated = tracking_data.get('last_updated', 'Unknown')
+        if last_updated != 'Unknown':
+            formatted_time = last_updated[:19].replace('T', ' ') + ' UTC'
+        else:
+            formatted_time = 'Unknown'
+        tracking_info = {
+            'last_updated': formatted_time,
+            'check_interval': '5 minutes'
+        }
+    
+    return render_template('dashboard.html', 
+                         user_name=session.get('user_name', ''),
+                         user_image=session.get('user_image', ''),
+                         status_info=status_info,
+                         is_tracked=is_tracked,
+                         tracking_info=tracking_info)
+
+@app.route('/api/track', methods=['POST'])
+def api_track():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
+    current_status = get_user_submission_status(user_id)
+    
+    if current_status:
+        tracked_users[user_id] = {
+            'channel': user_id,
+            'last_status': current_status,
+            'last_updated': datetime.now().isoformat()
+        }
+        save_tracked_users()
+        return jsonify({'success': True, 'message': 'Tracking started successfully'})
+    else:
+        return jsonify({'error': 'Submission not found'}), 404
+
+@app.route('/api/untrack', methods=['POST'])
+def api_untrack():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+    
+    user_id = session['user_id']
+    if user_id in tracked_users:
+        del tracked_users[user_id]
+        save_tracked_users()
+        return jsonify({'success': True, 'message': 'Tracking stopped successfully'})
+    else:
+        return jsonify({'error': 'Not currently tracked'}), 400
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     print(f"Starting bot with {len(tracked_users)} tracked users loaded from file")
