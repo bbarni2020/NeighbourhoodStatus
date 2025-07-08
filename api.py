@@ -11,6 +11,19 @@ import json
 import atexit
 from datetime import datetime, timedelta
 
+def load_env_file():
+    try:
+        with open('.env', 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+    except FileNotFoundError:
+        pass
+
+load_env_file()
+
 app = Flask(__name__)
 CORS(app)
 
@@ -18,6 +31,7 @@ slack_app = App(
     token=os.environ.get("SLACK_BOT_TOKEN"),
     signing_secret=os.environ.get("SLACK_SIGNING_SECRET")
 )
+
 handler = SlackRequestHandler(slack_app)
 
 TRACKED_USERS_FILE = 'tracked_users.json'
@@ -186,33 +200,14 @@ def check_status_changes():
                 old_emoji, old_status_name, _ = get_status_emoji_and_description(user_data['last_status'])
                 ai_message = get_ai_message(status_name, user_data['last_status'])
                 
-                if emoji == "🟡":
-                    slack_app.client.chat_postMessage(
-                        channel=user_data['channel'],
-                        text=f"{ai_message}\n\n"
-                            f"🔄 **Status Update Alert**\n\n"
-                            f"Your YSWS submission status has changed to Pending\n"
-                            f"**Current Status:** {emoji} *{current_status}*\n\n"
-                            f"💬 **Description:** {description}"
-                    )
-                elif emoji == "🔴":
-                    slack_app.client.chat_postMessage(
-                        channel=user_data['channel'],
-                        text=f"{ai_message}\n\n"
-                            f"🔄 **Status Update Alert**\n\n"
-                            f"Your YSWS submission was denied\n"
-                            f"**Current Status:** {emoji} *{current_status}*\n\n"
-                            f"💬 **Description:** {description}"
-                    )
-                elif emoji == "🟢":
-                    slack_app.client.chat_postMessage(
-                        channel=user_data['channel'],
-                        text=f"{ai_message}\n\n"
-                            f"🔄 **Status Update Alert**\n\n"
-                            f"Your YSWS submission is approved!\n"
-                            f"**Current Status:** {emoji} *{current_status}*\n\n"
-                            f"💬 **Description:** {description}"
-                    )
+                slack_app.client.chat_postMessage(
+                    channel=user_id,
+                    text=f"{ai_message}\n\n"
+                        f"🔄 **Status Update Alert**\n\n"
+                        f"Your YSWS submission status has changed!\n"
+                        f"**Current Status:** {emoji} *{status_name}*\n\n"
+                        f"💬 **Description:** {description}"
+                )
                 tracked_users[user_id]['last_status'] = current_status
                 save_tracked_users()
                 print(f"Status updated for user {user_id}: {user_data['last_status']} -> {current_status}")
@@ -248,7 +243,7 @@ def handle_track_status(message, say):
     else:
         say("❌ Could not find your submission. Make sure you have submitted to YSWS.")
 
-@slack_app.command("/track")
+@slack_app.command("/yswsdb-track")
 def handle_track_command(ack, respond, command):
     ack()
     user_id = command['user_id']
@@ -263,21 +258,21 @@ def handle_track_command(ack, respond, command):
             'last_status': current_status
         }
         save_tracked_users()
-        respond(f"✅ **YSWS Submission Tracking Activated**\n\n"
-               f"📊 **Current Status:** {emoji} *{current_status}*\n"
-               f"📋 **Status Type:** {status_name}\n"
-               f"💬 **Description:** {description}\n\n"
-               f"👤 **User ID:** {user_id}\n"
-               f"📱 **Channel:** <#{channel}>\n"
-               f"⏰ **Check Interval:** Every 5 minutes\n"
-               f"🔔 **Notifications:** Direct messages when status changes\n"
-               f"🛑 **To stop tracking:** Use `/untrack` command\n\n"
+        respond(f"✅ *YSWS Submission Tracking Activated*\n\n"
+               f"📊 *Current Status:* {emoji} {status_name}\n"
+               f"📋 *Status Type:* {status_name}\n"
+               f"💬 *Description:* {description}\n\n"
+               f"👤 *User ID:* {user_id}\n"
+               f"📱 *Channel:* <#{channel}>\n"
+               f"⏰ *Check Interval:* Every 5 minutes\n"
+               f"🔔 *Notifications:* Direct messages when status changes\n"
+               f"🛑 *To stop tracking:* Use `/untrack` command\n\n"
                f"I'll monitor your submission and notify you immediately when your status changes!")
         print(f"Started tracking user {user_id} with status: {current_status}")
     else:
         respond("❌ Could not find your submission. Make sure you have submitted to YSWS.")
 
-@slack_app.command("/status")
+@slack_app.command("/yswsdb-status")
 def handle_status_command(ack, respond, command):
     ack()
     user_id = command['user_id']
@@ -293,7 +288,7 @@ def handle_status_command(ack, respond, command):
     else:
         respond("❌ Could not find your submission. Make sure you have submitted to YSWS.")
 
-@slack_app.command("/untrack")
+@slack_app.command("/yswsdb-untrack")
 def handle_untrack_command(ack, respond, command):
     ack()
     user_id = command['user_id']
@@ -326,7 +321,6 @@ def slack_events():
     return handler.handle(request)
 
 if __name__ == '__main__':
-    print(get_ai_message("Pending Submission", "Denied"))
     print(f"Starting bot with {len(tracked_users)} tracked users loaded from file")
     for user_id, data in tracked_users.items():
         print(f"  - User {user_id}: {data['last_status']}")

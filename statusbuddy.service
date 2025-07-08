@@ -1,0 +1,12 @@
+[Unit]
+Description=NeighbourhoodStatus YSWS Slack Bot Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/StatusBuddy
+ExecStart=%h/StatusBuddy/venv/bin/python wgsi.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
