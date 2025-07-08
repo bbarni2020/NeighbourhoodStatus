@@ -622,7 +622,7 @@ def login():
     if not redirect_uri.endswith('/auth/callback'):
         redirect_uri += '/auth/callback'
     
-    scope = 'identity.basic,identity.email'
+    scope = 'openid,profile'
     
     slack_auth_url = f"https://slack.com/oauth/v2/authorize?client_id={client_id}&scope={scope}&redirect_uri={redirect_uri}"
     return redirect(slack_auth_url)
@@ -649,15 +649,6 @@ def auth_callback():
         user_info = data['authed_user']
         session['user_id'] = user_info['id']
         session['access_token'] = user_info['access_token']
-        
-        user_details = requests.get('https://slack.com/api/users.identity', 
-                                  headers={'Authorization': f"Bearer {user_info['access_token']}"})
-        user_data = user_details.json()
-        
-        if user_data.get('ok'):
-            session['user_name'] = user_data['user']['name']
-            session['user_email'] = user_data['user'].get('email', '')
-            session['user_image'] = user_data['user']['image_192']
     
     return redirect(url_for('dashboard'))
 
@@ -667,6 +658,19 @@ def dashboard():
         return redirect(url_for('index'))
     
     user_id = session['user_id']
+    access_token = session.get('access_token')
+    is_manual_login = session.get('manual_login', False)
+    
+    if access_token and not is_manual_login and ('user_name' not in session or 'user_image' not in session):
+        user_details = requests.get('https://slack.com/api/users.identity', 
+                                  headers={'Authorization': f"Bearer {access_token}"})
+        user_data = user_details.json()
+        
+        if user_data.get('ok'):
+            session['user_name'] = user_data['user']['name']
+            session['user_email'] = user_data['user'].get('email', '')
+            session['user_image'] = user_data['user']['image_192']
+    
     current_status = get_user_submission_status(user_id)
     is_tracked = user_id in tracked_users
     
@@ -694,11 +698,12 @@ def dashboard():
         }
     
     return render_template('dashboard.html', 
-                         user_name=session.get('user_name', ''),
+                         user_name=session.get('user_name', 'User'),
                          user_image=session.get('user_image', ''),
                          status_info=status_info,
                          is_tracked=is_tracked,
-                         tracking_info=tracking_info)
+                         tracking_info=tracking_info,
+                         is_manual_login=is_manual_login)
 
 @app.route('/api/track', methods=['POST'])
 def api_track():
@@ -736,6 +741,24 @@ def api_untrack():
 def logout():
     session.clear()
     return redirect(url_for('index'))
+
+@app.route('/manual-login', methods=['POST'])
+def manual_login():
+    slack_id = request.form.get('slack_id', '').strip()
+    
+    if not slack_id:
+        return redirect(url_for('index'))
+    
+    current_status = get_user_submission_status(slack_id)
+    
+    if current_status:
+        session['user_id'] = slack_id
+        session['user_name'] = f'User-{slack_id[:8]}'
+        session['user_image'] = ''
+        session['manual_login'] = True
+        return redirect(url_for('dashboard'))
+    else:
+        return render_template('login.html', error=f'No submission found for Slack ID: {slack_id}')
 
 if __name__ == '__main__':
     print(f"Starting bot with {len(tracked_users)} tracked users loaded from file")
