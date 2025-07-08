@@ -9,6 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import json
 import atexit
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +21,11 @@ slack_app = App(
 handler = SlackRequestHandler(slack_app)
 
 TRACKED_USERS_FILE = 'tracked_users.json'
+submissions_cache = {
+    'data': None,
+    'last_updated': None,
+    'cache_duration': timedelta(minutes=2)
+}
 
 def load_tracked_users():
     try:
@@ -41,30 +47,119 @@ scheduler.start()
 
 atexit.register(save_tracked_users)
 
+def get_cached_submissions():
+    now = datetime.now()
+    if (submissions_cache['data'] is None or 
+        submissions_cache['last_updated'] is None or 
+        now - submissions_cache['last_updated'] > submissions_cache['cache_duration']):
+        
+        try:
+            print("Fetching fresh data from API...")
+            response = requests.get('https://adventure-time.hackclub.dev/api/getYSWSSubmissions')
+            response.raise_for_status()
+            
+            submissions_cache['data'] = response.json()
+            submissions_cache['last_updated'] = now
+            print(f"Cache updated at {now}")
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching submissions: {e}")
+            if submissions_cache['data'] is None:
+                return None
+    else:
+        print("Using cached data")
+    
+    return submissions_cache['data']
+
 @app.route('/status/<slack_real_id>', methods=['GET'])
 def get_status(slack_real_id):
     try:
-        response = requests.get('https://adventure-time.hackclub.dev/api/getYSWSSubmissions')
-        response.raise_for_status()
-        
-        data = response.json()
+        data = get_cached_submissions()
+        if data is None:
+            return jsonify({'error': 'Failed to fetch submissions'}), 500
+            
         submissions = data.get('submissions', [])
         
         for submission in submissions:
             if submission.get('slackRealId') and slack_real_id in submission['slackRealId']:
-                return jsonify({'status': submission.get('status', 'Unknown')})
+                status = submission.get('status', 'Unknown')
+                emoji, status_name, description = get_status_emoji_and_description(status)
+                return jsonify({
+                    'status': status_name,
+                    'emoji': emoji,
+                    'status_name': status_name,
+                    'description': description
+                })
         
         return jsonify({'error': 'User not found'}), 404
         
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         return jsonify({'error': 'Failed to fetch submissions'}), 500
+
+def get_status_emoji_and_description(status):
+    if status.startswith("1–"):
+        return "🟡", "Pending Submission", "Your submission is waiting to be reviewed"
+    elif status.startswith("2–"):
+        return "🟢", "Approved", "Your submission has been successfully submitted"
+    elif status.startswith("0–"):
+        return "🔴", "Denied", "Your submission has not been started or there's an issue"
+    else:
+        return "⚪", "Unknown", "Status is not recognized"
+
+def get_ai_message(status_name, old_status=None):
+    try:
+        if status_name == "Pending Submission":
+            if old_status:
+                prompt = f"Write a short casual buddy message for someone whose YSWS submission changed from '{old_status}' to 'Pending Submission'. Keep it simple and friend-like."
+            else:
+                prompt = f"Write a short casual buddy message for someone whose YSWS submission is 'Pending Submission'. Keep it simple and friend-like."
+        elif status_name == "Approved":
+            if old_status:
+                prompt = f"Write a short casual buddy congratulations message for someone whose YSWS submission changed from '{old_status}' to 'Approved'! Keep it simple and friend-like."
+            else:
+                prompt = f"Write a short casual buddy congratulations message for someone whose YSWS submission is 'Approved'! Keep it simple and friend-like."
+        elif status_name == "Denied":
+            if old_status:
+                prompt = f"Write a short casual buddy message for someone whose YSWS submission changed from '{old_status}' to 'Denied'. Be supportive but realistic. Keep it simple and friend-like."
+            else:
+                prompt = f"Write a short casual buddy message for someone whose YSWS submission is 'Denied'. Be supportive but realistic. Keep it simple and friend-like."
+        else:
+            prompt = f"Something went wrong with the status update. Please check the status name: {status_name}. Write a short casual buddy message about a YSWS submission status update. Keep it simple and friend-like. It has been '{old_status}' before."
+
+        response = requests.post(
+            'https://ai.hackclub.com/chat/completions',
+            headers={'Content-Type': 'application/json'},
+            json={
+                'messages': [
+                    {'role': 'system', 'content': 'You are a casual buddy messaging a friend. Write only plain text with no formatting, markdown, quotes, or extra explanation. Just write the message directly as you would text a friend.'},
+                    {'role': 'user', 'content': prompt}
+                ]
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            ai_data = response.json()
+            if 'choices' in ai_data and len(ai_data['choices']) > 0:
+                return ai_data['choices'][0]['message']['content'].strip()
+    
+    except Exception as e:
+        print(f"Error getting AI message: {e}")
+    
+    fallback_messages = {
+        "Pending Submission": "⏳ Still waiting on the review team, huh? They're probably just taking their time to appreciate your work �",
+        "Approved": "🎉 Yooo, you got approved! Nice work buddy! 🚀",
+        "Denied": "� Ah man, that's a bummer. But hey, happens to the best of us! Time to regroup and try again �"
+    }
+    
+    return fallback_messages.get(status_name, "📱 Got an update on your submission! Let's see what's up 👀")
 
 def get_user_submission_status(slack_real_id):
     try:
-        response = requests.get('https://adventure-time.hackclub.dev/api/getYSWSSubmissions')
-        response.raise_for_status()
-        
-        data = response.json()
+        data = get_cached_submissions()
+        if data is None:
+            return None
+            
         submissions = data.get('submissions', [])
         
         for submission in submissions:
@@ -72,7 +167,7 @@ def get_user_submission_status(slack_real_id):
                 return submission.get('status', 'Unknown')
         
         return None
-    except requests.exceptions.RequestException:
+    except Exception:
         return None
 
 def check_status_changes():
@@ -87,10 +182,37 @@ def check_status_changes():
             
         if current_status != user_data['last_status']:
             try:
-                slack_app.client.chat_postMessage(
-                    channel=user_data['channel'],
-                    text=f"🔄 Your submission status has changed from *{user_data['last_status']}* to *{current_status}*"
-                )
+                emoji, status_name, description = get_status_emoji_and_description(current_status)
+                old_emoji, old_status_name, _ = get_status_emoji_and_description(user_data['last_status'])
+                ai_message = get_ai_message(status_name, user_data['last_status'])
+                
+                if emoji == "🟡":
+                    slack_app.client.chat_postMessage(
+                        channel=user_data['channel'],
+                        text=f"{ai_message}\n\n"
+                            f"🔄 **Status Update Alert**\n\n"
+                            f"Your YSWS submission status has changed to Pending\n"
+                            f"**Current Status:** {emoji} *{current_status}*\n\n"
+                            f"💬 **Description:** {description}"
+                    )
+                elif emoji == "🔴":
+                    slack_app.client.chat_postMessage(
+                        channel=user_data['channel'],
+                        text=f"{ai_message}\n\n"
+                            f"🔄 **Status Update Alert**\n\n"
+                            f"Your YSWS submission was denied\n"
+                            f"**Current Status:** {emoji} *{current_status}*\n\n"
+                            f"💬 **Description:** {description}"
+                    )
+                elif emoji == "🟢":
+                    slack_app.client.chat_postMessage(
+                        channel=user_data['channel'],
+                        text=f"{ai_message}\n\n"
+                            f"🔄 **Status Update Alert**\n\n"
+                            f"Your YSWS submission is approved!\n"
+                            f"**Current Status:** {emoji} *{current_status}*\n\n"
+                            f"💬 **Description:** {description}"
+                    )
                 tracked_users[user_id]['last_status'] = current_status
                 save_tracked_users()
                 print(f"Status updated for user {user_id}: {user_data['last_status']} -> {current_status}")
@@ -109,12 +231,19 @@ def handle_track_status(message, say):
     current_status = get_user_submission_status(user_id)
     
     if current_status:
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
         tracked_users[user_id] = {
             'channel': channel,
             'last_status': current_status
         }
         save_tracked_users()
-        say(f"✅ Now tracking your submission status! Current status: *{current_status}*\nI'll notify you every time it changes.")
+        say(f"✅ **YSWS Submission Tracking Activated**\n\n"
+            f"📊 **Current Status:** {emoji} *{status_name}*\n"
+            f"💬 {description}\n\n"
+            f"⏰ **Check Interval:** Every 5 minutes\n"
+            f"🔔 **Notifications:** Direct messages when status changes\n"
+            f"🛑 **To stop tracking:** Use `/untrack` command\n\n"
+            f"I'll monitor your submission and notify you immediately when your status changes!")
         print(f"Started tracking user {user_id} with status: {current_status}")
     else:
         say("❌ Could not find your submission. Make sure you have submitted to YSWS.")
@@ -128,12 +257,22 @@ def handle_track_command(ack, respond, command):
     current_status = get_user_submission_status(user_id)
     
     if current_status:
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
         tracked_users[user_id] = {
             'channel': channel,
             'last_status': current_status
         }
         save_tracked_users()
-        respond(f"✅ Now tracking your submission status! Current status: *{current_status}*\nI'll notify you every time it changes.")
+        respond(f"✅ **YSWS Submission Tracking Activated**\n\n"
+               f"📊 **Current Status:** {emoji} *{current_status}*\n"
+               f"📋 **Status Type:** {status_name}\n"
+               f"💬 **Description:** {description}\n\n"
+               f"👤 **User ID:** {user_id}\n"
+               f"📱 **Channel:** <#{channel}>\n"
+               f"⏰ **Check Interval:** Every 5 minutes\n"
+               f"🔔 **Notifications:** Direct messages when status changes\n"
+               f"🛑 **To stop tracking:** Use `/untrack` command\n\n"
+               f"I'll monitor your submission and notify you immediately when your status changes!")
         print(f"Started tracking user {user_id} with status: {current_status}")
     else:
         respond("❌ Could not find your submission. Make sure you have submitted to YSWS.")
@@ -146,7 +285,11 @@ def handle_status_command(ack, respond, command):
     current_status = get_user_submission_status(user_id)
     
     if current_status:
-        respond(f"📊 Your current submission status: *{current_status}*")
+        emoji, status_name, description = get_status_emoji_and_description(current_status)
+        respond(f"📊 **Your Current YSWS Submission Status**\n\n"
+               f"{emoji} **Status:** *{current_status}*\n"
+               f"📋 **Type:** {status_name}\n"
+               f"💬 **Description:** {description}")
     else:
         respond("❌ Could not find your submission. Make sure you have submitted to YSWS.")
 
@@ -169,8 +312,12 @@ def handle_list_command(ack, respond, command):
     
     if tracked_users:
         user_count = len(tracked_users)
-        respond(f"📋 Currently tracking {user_count} user(s):\n" + 
-               "\n".join([f"• <@{uid}>: {data['last_status']}" for uid, data in tracked_users.items()]))
+        user_list = []
+        for uid, data in tracked_users.items():
+            emoji, status_name, _ = get_status_emoji_and_description(data['last_status'])
+            user_list.append(f"• <@{uid}>: {emoji} {data['last_status']}")
+        
+        respond(f"📋 **Currently tracking {user_count} user(s):**\n\n" + "\n".join(user_list))
     else:
         respond("📋 No users are currently being tracked.")
 
@@ -179,6 +326,7 @@ def slack_events():
     return handler.handle(request)
 
 if __name__ == '__main__':
+    print(get_ai_message("Pending Submission", "Denied"))
     print(f"Starting bot with {len(tracked_users)} tracked users loaded from file")
     for user_id, data in tracked_users.items():
         print(f"  - User {user_id}: {data['last_status']}")
