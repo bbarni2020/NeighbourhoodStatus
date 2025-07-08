@@ -622,6 +622,11 @@ def index():
         return redirect(url_for('dashboard'))
     return render_template('login.html')
 
+
+@app.route('/login')
+def login():
+    return redirect(url_for('index'))
+
 # OAuth routes commented out - using manual login only
 # @app.route('/login')
 # def login():
