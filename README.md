@@ -94,15 +94,6 @@ The application will be available at `http://localhost:8721`
 
 ## 🔧 Configuration
 
-### Slack App Setup
-1. Create a new Slack app at [api.slack.com](https://api.slack.com)
-2. Enable the following OAuth scopes:
-   - `identity.basic`
-   - `chat:write`
-   - `users:read`
-3. Enable Event Subscriptions and add your endpoint: `https://yourdomain.com/slack/events`
-4. Install the app to your workspace
-
 ### Environment Variables
 | Variable | Description | Required |
 |----------|-------------|----------|
