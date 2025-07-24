@@ -13,6 +13,13 @@
 
 A comprehensive Slack bot and web application for tracking Neighborhood YSWS database submission statuses with real-time notifications and AI-powered updates.
 
+## Demo video of the Slack boz
+
+<video controls>
+  <source src="https://github.com/bbarni2020/NeighbourhoodStatus/raw/refs/heads/main/demo.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
 ## ✨ Features
 
 - **🔄 Real-time Status Tracking**: Automatically monitors submission status every 5 minutes
