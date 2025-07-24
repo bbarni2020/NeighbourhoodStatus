@@ -1,4 +1,4 @@
-# Neighborhood YSWS Status Tracker 🚀
+# Neighborhood YSWS Status Tracker 🚀 *(useless)*
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-green.svg)](https://flask.palletsprojects.com)
@@ -7,7 +7,7 @@
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)](https://github.com/bbarni2020/NeighbourhoodStatus)
 
 
-*Unfortunately Neighborhood YSWS got cancelled - so this tool isn't useful anymore*
+**Unfortunately Neighborhood YSWS got cancelled - so this tool isn't useful anymore**
 
 [![Message StatusBuddy on Slack](https://img.shields.io/badge/Message%20me%20on%20Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://hackclub.slack.com/team/U095F3Y7W3A)
 
