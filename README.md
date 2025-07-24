@@ -7,7 +7,9 @@
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)](https://github.com/bbarni2020/NeighbourhoodStatus)
 
 
-Unfortunately Neighborhood YSWS got cancelled - so this tool isn't useful anymore
+## Unfortunately Neighborhood YSWS got cancelled - so this tool isn't useful anymore
+
+[![Message me on Slack](https://img.shields.io/badge/Message%20me%20on%20Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://hackclub.slack.com/team/U095F3Y7W3A)
 
 A comprehensive Slack bot and web application for tracking Neighborhood YSWS database submission statuses with real-time notifications and AI-powered updates.
 
