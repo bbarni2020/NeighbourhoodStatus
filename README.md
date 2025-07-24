@@ -1,10 +1,13 @@
-# YSWS Status Tracker 🚀
+# Neighborhood YSWS Status Tracker 🚀
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-green.svg)](https://flask.palletsprojects.com)
 [![Slack API](https://img.shields.io/badge/Slack-API-purple.svg)](https://api.slack.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Active-brightgreen.svg)](https://github.com/bbarni2020/NeighbourhoodStatus)
+
+
+Unfortunately Neighborhood YSWS got cancelled - so this tool isn't useful anymore
 
 A comprehensive Slack bot and web application for tracking Neighborhood YSWS database submission statuses with real-time notifications and AI-powered updates.
 
