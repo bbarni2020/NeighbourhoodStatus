@@ -15,7 +15,7 @@ A comprehensive Slack bot and web application for tracking Neighborhood YSWS dat
 
 ## Demo video of the Slack boz
 
-<video controls>
+<video height="420" controls>
   <source src="https://github.com/bbarni2020/NeighbourhoodStatus/raw/refs/heads/main/demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
