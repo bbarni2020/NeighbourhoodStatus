@@ -13,12 +13,14 @@
 
 A comprehensive Slack bot and web application for tracking Neighborhood YSWS database submission statuses with real-time notifications and AI-powered updates.
 
-## Demo video of the Slack boz
+## Demo video of the Slack bot
 
 <video height="420" controls>
   <source src="https://github.com/bbarni2020/NeighbourhoodStatus/raw/refs/heads/main/demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
+
+[▶️ Watch Demo Video if not loaded](./demo.mp4)
 
 ## ✨ Features
 
