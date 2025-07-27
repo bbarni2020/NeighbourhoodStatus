@@ -244,6 +244,35 @@
                 showNotification('An error occurred. Please try again.', 'error');
             }
         }
+
+        function getSlackIdFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('slack_id');
+        }
+        async function autoLoginSlackId() {
+            const slackId = getSlackIdFromUrl();
+            if (slackId) {
+                try {
+                    const formData = new FormData();
+                    formData.append('slack_id', slackId);
+                    const response = await fetch('/manual-login', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (response.redirected) {
+                        window.location.href = response.url;
+                    } else {
+                        const html = await response.text();
+                        document.open();
+                        document.write(html);
+                        document.close();
+                    }
+                } catch (error) {
+                    showNotification('Slack ID login error', 'error');
+                }
+            }
+        }
+        window.addEventListener('DOMContentLoaded', autoLoginSlackId);
     </script>
 </body>
 </html>

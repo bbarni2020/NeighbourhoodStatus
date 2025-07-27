@@ -220,7 +220,7 @@ def check_status_changes():
                         f"Your YSWS submission status has changed!\n"
                         f"*Current Status:* {emoji} {status_name}\n\n"
                         f"💬 *Description:* {description}\n\n"
-                        f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC"
+                        f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}"
                 )
                 tracked_users[user_id]['last_status'] = current_status
                 tracked_users[user_id]['last_updated'] = datetime.now().isoformat()
@@ -259,7 +259,7 @@ def handle_track_status(message, say):
                      f"⏰ *Check Interval:* Every 5 minutes\n"
                      f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
                      f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
-                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
                      f"I'll monitor your submission and notify you immediately when your status changes!"
             )
         except Exception as e:
@@ -303,7 +303,7 @@ def handle_track_command(ack, respond, command):
                      f"⏰ *Check Interval:* Every 5 minutes\n"
                      f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
                      f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
-                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')} UTC\n\n"
+                     f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
                      f"I'll monitor your submission and notify you immediately when your status changes!"
             )
         except Exception as e:
@@ -364,6 +364,40 @@ def handle_list_command(ack, respond, command):
         respond(f"📋 *Currently tracking {user_count} user(s):*\n\n" + "\n".join(user_list))
     else:
         respond("📋 No users are currently being tracked.")
+
+@slack_app.command("/yswsdb-web")
+def handle_ysws_web_command(ack, respond, command):
+    ack()
+    user_id = command['user_id']
+    current_status = get_user_submission_status(user_id)
+    if current_status:
+        respond({
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Open your Neighborhood YSWS web dashboard:"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Open Dashboard"
+                            },
+                            "url": f"https://statusbuddy.bbarni.hackclub.app/?slack_id={user_id}",
+                            "action_id": "open_web_dashboard"
+                        }
+                    ]
+                }
+            ]
+        })
+    else:
+        respond("No submission found for your Slack ID.")
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
@@ -497,7 +531,7 @@ def handle_start_tracking_button(ack, body, client):
                  f"⏰ *Check Interval:* Every 5 minutes\n"
                  f"🔔 *Notifications:* You'll receive updates here when your status changes\n"
                  f"🛑 *To stop tracking:* Use `/yswsdb-untrack` command\n\n"
-                 f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
+                 f"*Last Updated:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                  f"I'll monitor your submission and notify you immediately when your status changes!"
         )
 
@@ -527,7 +561,7 @@ def handle_check_status_button(ack, body, client):
             text=f"📊 *Your Current YSWS Submission Status*\n\n"
                  f"{emoji} *Status:* {status_name}\n"
                  f"💬 *Description:* {description}\n\n"
-                 f"*Checked:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
+                 f"*Checked:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
     else:
         delete_bot_messages_in_dm(client, user_id)
@@ -769,8 +803,24 @@ def manual_login():
     
     if current_status:
         session['user_id'] = slack_id
-        session['user_name'] = f'User-{slack_id[:8]}'
-        session['user_image'] = ''
+        slack_user_name = None
+        slack_user_image = ''
+        try:
+            slack_token = SLACK_BOT_TOKEN
+            user_info = requests.get(
+                'https://slack.com/api/users.info',
+                params={'user': slack_id},
+                headers={'Authorization': f'Bearer {slack_token}'}
+            ).json()
+            print(user_info)
+            if user_info.get('ok'):
+                slack_user_name = user_info['user'].get('real_name', f'Slack User - {slack_id[:8]}')
+                slack_user_image = user_info['user'].get('profile', {}).get('image_192', '')
+        except Exception:
+            slack_user_name = f'Slack User - {slack_id[:8]}'
+            slack_user_image = ''
+        session['user_name'] = slack_user_name or f'Slack User - {slack_id[:8]}'
+        session['user_image'] = slack_user_image
         session['manual_login'] = True
         return redirect(url_for('dashboard'))
     else:
