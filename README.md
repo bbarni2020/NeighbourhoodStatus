@@ -14,7 +14,7 @@
 A comprehensive Slack bot and web application for tracking Neighborhood YSWS database submission statuses with real-time notifications and AI-powered updates.
 
 
-Or if you have any quiestions [![Message me on Slack](https://img.shields.io/badge/Message%20me%20on%20Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://hackclub.slack.com/team/U07H3E1CW7J)
+Or if you have any questions [![Message me on Slack](https://img.shields.io/badge/Message%20me%20on%20Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)](https://hackclub.slack.com/team/U07H3E1CW7J)
 
 ## Demo video of the Slack bot
 
